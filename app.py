@@ -355,4 +355,4 @@ if "pdf_bytes" in st.session_state:
     st.caption(t("web_share_note"))
 
 # --- Footer ---
-render_footer(libraries=["Jinja2", "fpdf2"])
+render_footer(libraries=["Jinja2", "fpdf2"], repo_name="kf-report-factory")
