@@ -1,3 +1,14 @@
+---
+title: kf-report-factory
+emoji: 🚀
+colorFrom: green
+colorTo: blue
+sdk: streamlit
+sdk_version: 1.44.1
+app_file: app.py
+pinned: false
+---
+
 # KF-ReportFactory
 
 > テンプレートを選んでデータを入力するだけ。定型報告書をPDFで自動生成。
