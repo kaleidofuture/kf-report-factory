@@ -78,15 +78,26 @@ _PERSISTENT_FIELDS = {"author", "department"}
 
 def _setup_font(pdf: FPDF) -> str:
     """Set up a font that supports the current language. Returns font family name."""
+    import os
     from components.i18n import get_lang
 
     if get_lang() == "ja":
-        # fpdf2 has built-in support for CJK via unihan fonts
-        try:
-            pdf.add_font("japanese", style="", fname="", uni=True)
-            return "japanese"
-        except Exception:
-            pass
+        # Try to find a Japanese-capable font
+        local_font = os.path.join(os.path.dirname(__file__), "NotoSansJP-Regular.ttf")
+        candidates = [local_font] + [
+            "C:/Windows/Fonts/msgothic.ttc",
+            "C:/Windows/Fonts/YuGothR.ttc",
+            "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
+            "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+            "/usr/share/fonts/noto-cjk/NotoSansCJKjp-Regular.otf",
+        ]
+        for font_path in candidates:
+            if os.path.exists(font_path):
+                try:
+                    pdf.add_font("JP", "", font_path, uni=True)
+                    return "JP"
+                except Exception:
+                    continue
     return "Helvetica"
 
 
@@ -98,11 +109,12 @@ def build_pdf(template_key: str, form_data: dict, csv_data: list[dict] | None) -
     pdf.alias_nb_pages()
     pdf.add_page()
 
-    # Font: use Helvetica (reliable on all platforms)
-    font = "Helvetica"
+    # Font: use Japanese font if available, fallback to Helvetica
+    font = _setup_font(pdf)
+    is_builtin = font == "Helvetica"
 
     # Title
-    pdf.set_font(font, "B", 16)
+    pdf.set_font(font, "B" if is_builtin else "", 16)
     pdf.cell(0, 12, title, new_x="LMARGIN", new_y="NEXT", align="C")
     pdf.set_font(font, "", 9)
     pdf.cell(
@@ -120,7 +132,7 @@ def build_pdf(template_key: str, form_data: dict, csv_data: list[dict] | None) -
         value = form_data.get(key, "")
 
         # Section header
-        pdf.set_font(font, "B", 11)
+        pdf.set_font(font, "B" if is_builtin else "", 11)
         pdf.set_fill_color(230, 240, 250)
         pdf.cell(0, 8, f"  {label}", new_x="LMARGIN", new_y="NEXT", fill=True)
         pdf.ln(2)
@@ -132,7 +144,7 @@ def build_pdf(template_key: str, form_data: dict, csv_data: list[dict] | None) -
 
     # CSV data table
     if csv_data and len(csv_data) > 0:
-        pdf.set_font(font, "B", 12)
+        pdf.set_font(font, "B" if is_builtin else "", 12)
         pdf.cell(0, 10, t("csv_data_section"), new_x="LMARGIN", new_y="NEXT")
         pdf.ln(2)
 
@@ -141,7 +153,7 @@ def build_pdf(template_key: str, form_data: dict, csv_data: list[dict] | None) -
         col_width = min((pdf.w - 20) / col_count, 60)
 
         # Header row
-        pdf.set_font(font, "B", 8)
+        pdf.set_font(font, "B" if is_builtin else "", 8)
         pdf.set_fill_color(70, 130, 200)
         pdf.set_text_color(255, 255, 255)
         for h in headers:
