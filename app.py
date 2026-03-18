@@ -23,6 +23,18 @@ st.info("💻 " + t("desktop_recommended"))
 
 # --- Report Templates ---
 TEMPLATES = {
+    "daily": {
+        "fields": [
+            {"key": "author", "type": "text"},
+            {"key": "department", "type": "text"},
+            {"key": "date", "type": "text"},
+            {"key": "morning_plan", "type": "textarea"},
+            {"key": "progress_notes", "type": "textarea"},
+            {"key": "end_of_day_summary", "type": "textarea"},
+            {"key": "issues", "type": "textarea"},
+            {"key": "tomorrow_plan", "type": "textarea"},
+        ],
+    },
     "weekly": {
         "fields": [
             {"key": "author", "type": "text"},
@@ -60,6 +72,9 @@ TEMPLATES = {
     },
 }
 
+# Fields whose values should persist across generations
+_PERSISTENT_FIELDS = {"author", "department"}
+
 
 def _setup_font(pdf: FPDF) -> str:
     """Set up a font that supports the current language. Returns font family name."""
@@ -84,8 +99,6 @@ def build_pdf(template_key: str, form_data: dict, csv_data: list[dict] | None) -
     pdf.add_page()
 
     # Font: use Helvetica (reliable on all platforms)
-    # Japanese text will be rendered as-is; Helvetica handles ASCII well.
-    # For full CJK support, a CJK font file would need to be bundled.
     font = "Helvetica"
 
     # Title
@@ -155,6 +168,74 @@ def build_pdf(template_key: str, form_data: dict, csv_data: list[dict] | None) -
     return pdf.output()
 
 
+def build_plaintext(template_key: str, form_data: dict, csv_data: list[dict] | None) -> str:
+    """Generate a plain-text report suitable for pasting into Slack / chat tools."""
+    title = t(f"template_{template_key}")
+    lines = [
+        f"{'=' * 40}",
+        f"  {title}",
+        f"  Generated: {date.today().isoformat()}",
+        f"{'=' * 40}",
+        "",
+    ]
+
+    template_def = TEMPLATES[template_key]
+    for field in template_def["fields"]:
+        key = field["key"]
+        label = t(f"field_{key}")
+        value = form_data.get(key, "") or "-"
+        lines.append(f"[{label}]")
+        lines.append(value)
+        lines.append("")
+
+    if csv_data and len(csv_data) > 0:
+        lines.append(f"--- {t('csv_data_section')} ---")
+        headers = list(csv_data[0].keys())
+        lines.append(" | ".join(headers))
+        lines.append("-" * (len(" | ".join(headers))))
+        for row in csv_data[:100]:
+            lines.append(" | ".join(str(row.get(h, "")) for h in headers))
+        lines.append("")
+
+    lines.append("KaleidoFuture - KF-ReportFactory")
+    return "\n".join(lines)
+
+
+def build_markdown(template_key: str, form_data: dict, csv_data: list[dict] | None) -> str:
+    """Generate a Markdown report."""
+    title = t(f"template_{template_key}")
+    lines = [
+        f"# {title}",
+        "",
+        f"*Generated: {date.today().isoformat()}*",
+        "",
+    ]
+
+    template_def = TEMPLATES[template_key]
+    for field in template_def["fields"]:
+        key = field["key"]
+        label = t(f"field_{key}")
+        value = form_data.get(key, "") or "-"
+        lines.append(f"## {label}")
+        lines.append("")
+        lines.append(value)
+        lines.append("")
+
+    if csv_data and len(csv_data) > 0:
+        lines.append(f"## {t('csv_data_section')}")
+        lines.append("")
+        headers = list(csv_data[0].keys())
+        lines.append("| " + " | ".join(headers) + " |")
+        lines.append("| " + " | ".join("---" for _ in headers) + " |")
+        for row in csv_data[:100]:
+            lines.append("| " + " | ".join(str(row.get(h, "")) for h in headers) + " |")
+        lines.append("")
+
+    lines.append("---")
+    lines.append("*KaleidoFuture - KF-ReportFactory*")
+    return "\n".join(lines)
+
+
 # --- Main UI ---
 st.markdown(f"### {t('select_template')}")
 
@@ -182,10 +263,14 @@ if input_mode in ("form", "both"):
     for field in template_def["fields"]:
         key = field["key"]
         label = t(f"field_{key}")
+        # Pre-fill persistent fields from session_state
+        default_value = ""
+        if key in _PERSISTENT_FIELDS:
+            default_value = st.session_state.get(f"_persist_{key}", "")
         if field["type"] == "textarea":
-            form_data[key] = st.text_area(label, key=f"form_{key}")
+            form_data[key] = st.text_area(label, value=default_value, key=f"form_{key}")
         else:
-            form_data[key] = st.text_input(label, key=f"form_{key}")
+            form_data[key] = st.text_input(label, value=default_value, key=f"form_{key}")
 
 # CSV upload
 csv_data = None
@@ -202,32 +287,60 @@ if input_mode in ("csv", "both"):
         except Exception as e:
             st.error(f"{t('csv_error')}: {e}")
 
-# Generate PDF
+# Generate report
 st.markdown("---")
-if st.button(t("generate_pdf"), type="primary"):
+if st.button(t("generate_report"), type="primary"):
     if input_mode == "form" and not any(form_data.values()):
         st.warning(t("no_input_warning"))
     elif input_mode == "csv" and csv_data is None:
         st.warning(t("no_csv_warning"))
     else:
+        # Persist author/department for next time
+        for key in _PERSISTENT_FIELDS:
+            if key in form_data and form_data[key]:
+                st.session_state[f"_persist_{key}"] = form_data[key]
+
         with st.spinner(t("processing")):
             try:
                 pdf_bytes = build_pdf(template_choice, form_data, csv_data)
+                txt_content = build_plaintext(template_choice, form_data, csv_data)
+                md_content = build_markdown(template_choice, form_data, csv_data)
+                base_name = f"report_{template_choice}_{date.today().isoformat()}"
+
                 st.session_state["pdf_bytes"] = pdf_bytes
-                st.session_state["pdf_filename"] = (
-                    f"report_{template_choice}_{date.today().isoformat()}.pdf"
-                )
-                st.success(t("pdf_generated"))
+                st.session_state["pdf_filename"] = f"{base_name}.pdf"
+                st.session_state["txt_content"] = txt_content
+                st.session_state["txt_filename"] = f"{base_name}.txt"
+                st.session_state["md_content"] = md_content
+                st.session_state["md_filename"] = f"{base_name}.md"
+                st.success(t("report_generated"))
             except Exception as e:
                 st.error(f"{t('pdf_error')}: {e}")
 
 if "pdf_bytes" in st.session_state:
-    st.download_button(
-        label=t("download_result"),
-        data=st.session_state["pdf_bytes"],
-        file_name=st.session_state["pdf_filename"],
-        mime="application/pdf",
-    )
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.download_button(
+            label=t("download_pdf"),
+            data=st.session_state["pdf_bytes"],
+            file_name=st.session_state["pdf_filename"],
+            mime="application/pdf",
+        )
+    with col2:
+        st.download_button(
+            label=t("download_txt"),
+            data=st.session_state["txt_content"],
+            file_name=st.session_state["txt_filename"],
+            mime="text/plain",
+        )
+    with col3:
+        st.download_button(
+            label=t("download_md"),
+            data=st.session_state["md_content"],
+            file_name=st.session_state["md_filename"],
+            mime="text/markdown",
+        )
+    st.caption(t("web_share_note"))
 
 # --- Footer ---
 render_footer(libraries=["Jinja2", "fpdf2"])
