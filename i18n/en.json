@@ -49,5 +49,6 @@
   "field_achievement_rate": "Achievement Rate",
   "field_top_products": "Top Products",
   "field_new_clients": "New Clients",
-  "field_remarks": "Remarks"
+  "field_remarks": "Remarks",
+  "desktop_recommended": "This app is optimized for desktop use"
 }

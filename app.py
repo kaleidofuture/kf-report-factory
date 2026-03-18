@@ -19,6 +19,7 @@ from components.i18n import t
 
 # --- Header ---
 render_header()
+st.info("💻 " + t("desktop_recommended"))
 
 # --- Report Templates ---
 TEMPLATES = {
