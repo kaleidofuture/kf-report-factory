@@ -62,5 +62,6 @@
   "field_top_products": "Top Products",
   "field_new_clients": "New Clients",
   "field_remarks": "Remarks",
-  "desktop_recommended": "This app is optimized for desktop use"
+  "desktop_recommended": "This app is optimized for desktop use",
+  "report_issue": "Report an issue"
 }
